@@ -85,8 +85,14 @@ function greater(a::BidAction, b::BidAction)
     end
 end
 
-function next_player(i, N)
-    return (i % N) + 1
+function next_player(i, dice_left::Vector{Int})
+    N = length(dice_left)
+    next = (i % N) + 1
+    
+    while dice_left[next] == 0
+        next = (next % N) + 1
+    end
+    return next
 end
 
 function create_game(num_players, dice_per_player, ones_wild, ego_id)
@@ -135,7 +141,7 @@ function step(game::Game, state::FullState, action::Action)
             error("Current bid not greater than last bid")
         end
             
-        next_pub = PublicInfo(action, player, next_player(player, N), state.pub.dice_left)
+        next_pub = PublicInfo(action, player, next_player(player, state.pub.dice_left), state.pub.dice_left)
         next_state = FullState(state.players, next_pub)
         next_obs = observe(game, next_state)
         reward = BID_REWARD
@@ -162,15 +168,19 @@ function step(game::Game, state::FullState, action::Action)
         if count < bid.qty
             winner = caller
             loser = bidder
-            reward = (winner == game.ego_id) ? WIN_REWARD : LOSS_REWARD
         else
             winner = bidder
             loser = caller
-            reward = (winner == game.ego_id) ? WIN_REWARD : LOSS_REWARD
+        end
+
+        if loser != game.ego_id
+            reward = 1.0
+        else
+            reward = -1.0
         end
 
         new_dice_left = copy(state.pub.dice_left)
-        new_dice_left[loser] -= 1
+        new_dice_left[loser] = max(new_dice_left[loser] - 1, 0)
         if new_dice_left[game.ego_id] == 0
             game_over = true
         elseif all(i == game.ego_id || new_dice_left[i] == 0 for i in 1:N)
@@ -180,49 +190,53 @@ function step(game::Game, state::FullState, action::Action)
         end
 
         if game_over == true
-            return nothing, nothing, reward, true
+            terminal_pub = PublicInfo(bid, bidder, player, new_dice_left)
+            terminal_state = FullState(state.players, terminal_pub)
+            terminal_obs = observe(game, terminal_state)
+
+            return terminal_state, terminal_obs, reward, true
         end
 
-        next_state, next_obs = new_round(game, new_dice_left, next_player(loser, N))
+        next_state, next_obs = new_round(game, new_dice_left, next_player(loser, new_dice_left))
     end
     
     return next_state, next_obs, reward, game_over
 end
 
-function random_legal_action(game::Game, obs::Observation)
-    idxs = findall(obs.legal_actions)
-    i = rand(idxs)
-    return game.actions[i], i
-end
-
 # below this is just an example of how to run it
 
-function run_episode(game::Game; verbose=false)
-    state, obs = reset(game)
-    total_reward = 0.0
-    step_num = 0
+# function random_legal_action(game::Game, obs::Observation)
+#     idxs = findall(obs.legal_actions)
+#     i = rand(idxs)
+#     return game.actions[i], i
+# end
 
-    while true
-        step_num += 1
-        action, a_idx = random_legal_action(game, obs)
+# function run_episode(game::Game; verbose=false)
+#     state, obs = reset(game)
+#     total_reward = 0.0
+#     step_num = 0
 
-        verbose && println("Step $step_num | turn=$(state.pub.turn) | action=$action")
+#     while true
+#         step_num += 1
+#         action, a_idx = random_legal_action(game, obs)
 
-        next_state, next_obs, reward, done = step(game, state, action)
-        total_reward += reward
+#         verbose && println("Step $step_num | turn=$(state.pub.turn) | action=$action")
 
-        if done
-            verbose && println("Episode finished with total_reward = $total_reward")
-            return total_reward
-        end
+#         next_state, next_obs, reward, done = step(game, state, action)
+#         total_reward += reward
 
-        state = next_state
-        obs   = next_obs
-    end
-end
+#         if done
+#             verbose && println("Episode finished with total_reward = $total_reward")
+#             return total_reward
+#         end
 
-# Example: 2-player, 2 dice each, ones wild, ego is player 1
-game = create_game(2, 2, true, 1)  # or use start_game after you fix it
-for ep in 1:5
-    println("Episode $ep reward = ", run_episode(game; verbose=true))
-end
+#         state = next_state
+#         obs   = next_obs
+#     end
+# end
+
+# # Example: 2-player, 2 dice each, ones wild, ego is player 1
+# game = create_game(2, 2, true, 1)  # or use start_game after you fix it
+# for ep in 1:5
+#     println("Episode $ep reward = ", run_episode(game; verbose=true))
+# end
