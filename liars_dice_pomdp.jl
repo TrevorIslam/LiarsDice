@@ -64,7 +64,7 @@ function POMDPs.gen(pomdp::LiarsDicePOMDP, s::FullState, a::Action, rng::Abstrac
     total_r += r
 
     while !done && state.pub.turn != pomdp.ego_id
-        opp_action, _ = random_policy(game, obs)
+        opp_action, _ = mixed_opponent_policy(game, obs)
 
         state, obs, r, done = step(game, state, opp_action)
         total_r += r

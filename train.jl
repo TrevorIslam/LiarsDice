@@ -278,8 +278,11 @@ function train_agent!(
     pomdp::LiarsDicePOMDP;
     num_episodes::Int = NUM_EPISODES,
     max_steps::Int = MAX_STEPS,
-    save_path::String = "liars_dice_policy.bson"
-)
+    save_path::String = "liars_dice_policy.bson")
+
+    global replay_buffer
+    replay_buffer = ReplayBuffer(REPLAY_CAPACITY)
+
     rng = MersenneTwister(1234)
     eps = EPS_START
     rewards = Vector{Float32}(undef, num_episodes)
@@ -318,8 +321,8 @@ end
 function evaluate_policy(
     pomdp::LiarsDicePOMDP;
     num_episodes::Int = 500,
-    max_steps::Int = MAX_STEPS
-)
+    max_steps::Int = MAX_STEPS)
+
     rng = MersenneTwister(4321)
     wins = 0
     total_reward = 0.0
@@ -342,10 +345,16 @@ function evaluate_policy(
     return win_rate, avg_reward
 end
 
+# Phase 2: fine-tune vs mixed heuristic opponents
+load_policy!("liars_dice_policy.bson")  # <-- your Phase 1 snapshot
 
-println("Training agent against random opponents...")
-train_agent!(pomdp; num_episodes = NUM_EPISODES, max_steps = MAX_STEPS)
+println("Training agent against mixed heuristic opponents...")
+train_agent!(
+    pomdp;
+    num_episodes = NUM_EPISODES,
+    max_steps = MAX_STEPS,
+    save_path = "liars_dice_policy_heuristics.bson"
+)
 
-# EVAL (using the just-trained weights)
-println("\nEvaluating trained policy (greedy) vs random opponents...")
+println("\nEvaluating heuristic-trained policy (greedy) vs mixed opponents...")
 evaluate_policy(pomdp; num_episodes = 500, max_steps = MAX_STEPS)
